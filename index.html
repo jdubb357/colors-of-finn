@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Colors of Finn">
+<meta name="theme-color" content="#f3efe6">
+<title>Colors of Finn</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#f3efe6;font-family:"Trebuchet MS",system-ui,sans-serif;color:#6b6358;
+touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;overscroll-behavior:none}
+#game{position:fixed;inset:0}
+#hud{position:absolute;top:8px;left:0;right:0;text-align:center;font-size:22px;opacity:.85;pointer-events:none}
+#stars{color:#e3c77a;letter-spacing:4px}
+.item{position:absolute;transition:transform .5s ease,opacity .8s ease}
+.target{opacity:.9}
+.piece{cursor:grab;filter:drop-shadow(0 3px 4px rgba(0,0,0,.12))}
+.piece.drag{transition:none;transform:scale(1.08)}
+.done{transform:scale(1)}
+.glow{position:absolute;border-radius:50%;background:radial-gradient(circle,rgba(255,250,230,.9),rgba(255,250,230,0) 70%);pointer-events:none;opacity:0;transition:opacity .9s ease}
+.ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f3efe6;z-index:10;text-align:center;transition:opacity .8s ease}
+#start button{font:inherit;font-size:clamp(28px,6vw,54px);color:#fff;background:#9db8a8;border:0;border-radius:40px;padding:28px 56px;box-shadow:0 6px 0 #83a090}
+#start p{font-size:18px;opacity:.7}
+#rotate{display:none;font-size:26px}
+@media (orientation:portrait){#rotate{display:flex}}
+#msg{position:absolute;left:0;right:0;top:40%;text-align:center;font-size:clamp(30px,6vw,56px);opacity:0;transition:opacity .9s ease;pointer-events:none;color:#8a9f92}
+</style></head><body>
+<div id="game"><div id="hud"><span id="lvl">Level 1</span> &nbsp;<span id="stars"></span></div><div id="msg">Great job, Finn!</div></div>
+<div id="start" class="ov"><button id="go">Colors of Finn</button><p>Tap to play</p></div>
+<div id="rotate" class="ov"><div style="font-size:60px">↻</div>Please turn your phone sideways</div>
+<script>
+const COLORS={red:'#e59a92',blue:'#8fb3d9',yellow:'#ecd68a',green:'#9cc9a0',orange:'#f0b88a',purple:'#b9a3d4'};
+const SHAPES=['circle','square','triangle','star','heart'];
+function path(s){switch(s){
+case'circle':return'<circle cx="50" cy="50" r="44"/>';
+case'square':return'<rect x="8" y="8" width="84" height="84" rx="12"/>';
+case'triangle':return'<path d="M50 8 L94 88 L6 88 Z" stroke-linejoin="round"/>';
+case'star':{let p='';for(let i=0;i<10;i++){const r=i%2?20:46,a=Math.PI/5*i-Math.PI/2;p+=(i?'L':'M')+(50+r*Math.cos(a)).toFixed(1)+' '+(54+r*Math.sin(a)).toFixed(1)}return'<path d="'+p+'Z" stroke-linejoin="round"/>'}
+case'heart':return'<path d="M50 88 C10 60 4 34 20 20 C34 8 48 16 50 28 C52 16 66 8 80 20 C96 34 90 60 50 88Z"/>';}}
+function svg(s,c,outline){return`<svg viewBox="0 0 100 100" width="100%" height="100%">${outline?`<g fill="${c}" fill-opacity=".18" stroke="${c}" stroke-width="5" stroke-dasharray="9 7">`:`<g fill="${c}" stroke="#fff" stroke-opacity=".5" stroke-width="2">`}${path(s)}</g></svg>`}
+// level design: slow progression
+function levelSpec(n){
+ const cn=Object.keys(COLORS);
+ const L=[
+ [1,['circle'],['red'],0],[1,['square'],['blue'],0],[1,['triangle'],['yellow'],0],
+ [2,['circle','square'],['red','blue'],0],[2,['circle','triangle'],['green','yellow'],0],[2,['square','star'],['orange','blue'],0],
+ [2,['circle','circle'],['red','blue'],1],[2,['heart','circle'],['purple','red'],1],
+ [3,['circle','square','triangle'],['red','blue','yellow'],1],[3,['star','heart','circle'],['green','purple','orange'],1],
+ [3,['square','square','circle'],['blue','green','blue'],1],[3,['triangle','star','heart'],['orange','yellow','red'],1],
+ [3,['circle','circle','circle'],['red','orange','purple'],1],
+ [4,['circle','square','triangle','star'],['red','blue','yellow','green'],1],[4,['heart','star','circle','square'],['purple','orange','blue','red'],1],
+ [4,['square','square','triangle','triangle'],['green','blue','green','blue'],1],[4,['star','heart','heart','star'],['yellow','red','purple','orange'],1],
+ [5,['circle','square','triangle','star','heart'],['red','blue','yellow','green','purple'],1],
+ [5,['circle','circle','square','square','heart'],['orange','red','blue','purple','red'],1],
+ [5,['star','star','triangle','heart','circle'],['yellow','orange','green','purple','blue'],1]];
+ if(n<=L.length){const[k,s,c,sh]=L[n-1];return{items:s.map((x,i)=>({s:x,c:c[i]})),shuffle:sh}}
+ const k=3+((n-L.length)%3),items=[],used=new Set();
+ while(items.length<k){const s=SHAPES[Math.random()*5|0],c=cn[Math.random()*6|0];if(!used.has(s+c)){used.add(s+c);items.push({s,c})}}
+ return{items,shuffle:1};
+}
+let level=+localStorage.getItem('cof_level')||1,actx,pieces=[],left=0;
+const G=document.getElementById('game');
+function tone(f,d=.5,v=.06,type='sine',f2){if(!actx)return;const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();o.type=type;o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+d);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.04);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+d+.05)}
+const sPick=()=>tone(660,.25,.03),sMatch=()=>{tone(523,.7,.05);setTimeout(()=>tone(784,.9,.04),150)},
+ sWrong=()=>tone(220,.35,.04,'sine',170),sDone=()=>[523,659,784].forEach((f,i)=>setTimeout(()=>tone(f,1.1,.04),i*260));
+function hud(){document.getElementById('lvl').textContent='Level '+level;document.getElementById('stars').textContent='★'.repeat(Math.min(5,((level-1)%5)+1))}
+function build(){
+ G.querySelectorAll('.item,.glow').forEach(e=>e.remove());hud();
+ const W=innerWidth,H=innerHeight,spec=levelSpec(level),k=spec.items.length;
+ const size=Math.min(H*.32,W/(k+1)*.85,170);left=k;pieces=[];
+ const slot=i=>(W/(k))*(i+.5);
+ let order=[...Array(k).keys()];if(spec.shuffle)for(let i=k-1;i>0;i--){const j=Math.random()*(i+1)|0;[order[i],order[j]]=[order[j],order[i]]}
+ if(spec.shuffle&&k>1&&order.every((v,i)=>v===i))order.reverse();
+ spec.items.forEach((it,i)=>{
+  const t=document.createElement('div');t.className='item target';t.innerHTML=svg(it.s,COLORS[it.c],1);
+  Object.assign(t.style,{width:size+'px',height:size+'px',left:slot(i)-size/2+'px',top:H*.27-size/2+'px'});G.appendChild(t);
+  const p=document.createElement('div');p.className='item piece';p.innerHTML=svg(it.s,COLORS[it.c]);
+  const hx=slot(order.indexOf(i))-size/2,hy=H*.74-size/2;
+  Object.assign(p.style,{width:size+'px',height:size+'px',left:hx+'px',top:hy+'px',opacity:0});G.appendChild(p);
+  requestAnimationFrame(()=>p.style.opacity=1);
+  const o={p,t,hx,hy,size,key:it.s+it.c,done:0};pieces.push(o);drag(o);
+ });
+}
+function drag(o){
+ let dx,dy,id=null;const p=o.p;
+ p.addEventListener('pointerdown',e=>{if(o.done||id!==null)return;e.preventDefault();id=e.pointerId;p.setPointerCapture(id);
+  const r=p.getBoundingClientRect();dx=e.clientX-r.left;dy=e.clientY-r.top;p.classList.add('drag');p.style.zIndex=5;sPick()});
+ p.addEventListener('pointermove',e=>{if(e.pointerId!==id)return;e.preventDefault();p.style.left=e.clientX-dx+'px';p.style.top=e.clientY-dy+'px'});
+ const up=e=>{if(e.pointerId!==id)return;id=null;p.classList.remove('drag');p.style.zIndex='';
+  const px=parseFloat(p.style.left)+o.size/2,py=parseFloat(p.style.top)+o.size/2;let hit=null,best=1e9;
+  pieces.forEach(q=>{if(q.done)return;const r=q.t.getBoundingClientRect(),d=Math.hypot(px-r.left-r.width/2,py-r.top-r.height/2);if(d<o.size*.85&&d<best){best=d;hit=q}});
+  p.style.transition='left .6s ease,top .6s ease';
+  if(hit&&hit.key===o.key){const r=hit.t.getBoundingClientRect();p.style.left=r.left+'px';p.style.top=r.top+'px';hit.matchedBy=o;o.done=hit.done=0;o.done=1;hit.t.style.opacity=0;sMatch();glow(r);
+   pieces.forEach(q=>{if(q===o)q.done=1});if(--left===0)setTimeout(win,900)}
+  else{if(hit)sWrong();p.style.left=o.hx+'px';p.style.top=o.hy+'px'}
+  setTimeout(()=>p.style.transition='',650)};
+ p.addEventListener('pointerup',up);p.addEventListener('pointercancel',up);
+}
+function glow(r){const g=document.createElement('div');g.className='glow';const s=r.width*1.6;Object.assign(g.style,{width:s+'px',height:s+'px',left:r.left+r.width/2-s/2+'px',top:r.top+r.height/2-s/2+'px'});G.appendChild(g);
+ requestAnimationFrame(()=>{g.style.opacity=1;setTimeout(()=>g.style.opacity=0,700);setTimeout(()=>g.remove(),1700)})}
+function win(){sDone();const m=document.getElementById('msg');m.style.opacity=1;
+ setTimeout(()=>{m.style.opacity=0;G.querySelectorAll('.piece').forEach(e=>e.style.opacity=0)},1800);
+ setTimeout(()=>{level++;localStorage.setItem('cof_level',level);build()},2700)}
+document.getElementById('go').onclick=()=>{try{actx=new (window.AudioContext||window.webkitAudioContext)();actx.resume()}catch(e){}
+ const s=document.getElementById('start');s.style.opacity=0;setTimeout(()=>s.remove(),800);
+ try{document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen().then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape').catch(()=>{})).catch(()=>{})}catch(e){}
+ build()};
+document.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+document.addEventListener('gesturestart',e=>e.preventDefault());
+let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(!document.getElementById('start'))build()},300)});
+hud();
+</script></body></html>
