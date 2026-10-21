@@ -43,28 +43,44 @@ function svg(s,c,outline){return`<svg viewBox="0 0 100 100" width="100%" height=
 // level design: slow progression
 function levelSpec(n){
  const cn=Object.keys(COLORS);
+ // [shapes, colors, shuffle, sizes ('b'/'s' per item; omitted = all big), sizeMatters]
  const L=[
- [1,['circle'],['red'],0],[1,['square'],['blue'],0],[1,['triangle'],['yellow'],0],
- [2,['circle','square'],['red','blue'],0],[2,['circle','triangle'],['green','yellow'],0],[2,['square','star'],['orange','blue'],0],
- [2,['circle','circle'],['red','blue'],1],[2,['heart','circle'],['purple','red'],1],
- [3,['circle','square','triangle'],['red','blue','yellow'],1],[3,['star','heart','circle'],['green','purple','orange'],1],
- [3,['square','square','circle'],['blue','green','blue'],1],[3,['triangle','star','heart'],['orange','yellow','red'],1],
- [3,['circle','circle','circle'],['red','orange','purple'],1],
- [4,['circle','square','triangle','star'],['red','blue','yellow','green'],1],[4,['heart','star','circle','square'],['purple','orange','blue','red'],1],
- [4,['square','square','triangle','triangle'],['green','blue','green','blue'],1],[4,['star','heart','heart','star'],['yellow','red','purple','orange'],1],
- [5,['circle','square','triangle','star','heart'],['red','blue','yellow','green','purple'],1],
- [5,['circle','circle','square','square','heart'],['orange','red','blue','purple','red'],1],
- [5,['star','star','triangle','heart','circle'],['yellow','orange','green','purple','blue'],1]];
- if(n<=L.length){const[k,s,c,sh]=L[n-1];return{items:s.map((x,i)=>({s:x,c:c[i]})),shuffle:sh}}
+ [['circle'],['red'],0],[['square'],['blue'],0],[['triangle'],['yellow'],0],
+ [['circle','square'],['red','blue'],0],[['circle','triangle'],['green','yellow'],0],[['square','star'],['orange','blue'],0],
+ [['circle','circle'],['red','blue'],1],[['heart','circle'],['purple','red'],1],
+ [['circle','square','triangle'],['red','blue','yellow'],1],[['star','heart','circle'],['green','purple','orange'],1],
+ [['square','square','circle'],['blue','green','blue'],1],[['triangle','star','heart'],['orange','yellow','red'],1],
+ [['circle','circle','circle'],['red','orange','purple'],1],
+ // sizes appear (but shape+color still unique)
+ [['circle','square'],['red','blue'],1,'bs'],[['star','heart'],['yellow','purple'],1,'sb'],
+ [['circle','triangle','square'],['green','orange','blue'],1,'bsb'],[['heart','star','circle'],['red','yellow','purple'],1,'sbs'],
+ // size must match: same shape+color in big and little
+ [['circle','circle'],['blue','blue'],1,'bs',1],[['square','square'],['red','red'],1,'sb',1],
+ [['star','star','heart'],['yellow','yellow','purple'],1,'bsb',1],[['heart','heart','circle'],['red','red','green'],1,'sbb',1],
+ [['triangle','triangle','square','square'],['orange','orange','blue','blue'],1,'bsbs',1],
+ [['circle','square','triangle','star'],['red','blue','yellow','green'],1,'bsbs',1],
+ [['circle','circle','star','star'],['purple','purple','orange','orange'],1,'sbbs',1],
+ [['circle','square','triangle','star','heart'],['red','blue','yellow','green','purple'],1,'bsbsb',1]];
+ if(n<=L.length){const[sh,c,shuf,z,sm]=L[n-1];return{items:sh.map((x,i)=>({s:x,c:c[i],z:z?z[i]:'b'})),shuffle:shuf,sized:!!z}}
  const k=3+((n-L.length)%3),items=[],used=new Set();
- while(items.length<k){const s=SHAPES[Math.random()*5|0],c=cn[Math.random()*6|0];if(!used.has(s+c)){used.add(s+c);items.push({s,c})}}
- return{items,shuffle:1};
+ while(items.length<k){const s=SHAPES[Math.random()*5|0],c=cn[Math.random()*6|0];
+  if(!used.has(s+c)){used.add(s+c);if(items.length<k-1&&Math.random()<.5){items.push({s,c,z:'b'},{s,c,z:'s'})}else items.push({s,c,z:Math.random()<.5?'b':'s'})}}
+ return{items,shuffle:1,sized:true};
 }
 let voice=null,lastSay='',lastT=0;
 function pickVoice(){try{const v=speechSynthesis.getVoices();voice=v.find(x=>/^en[-_]US/i.test(x.lang)&&/samantha|google|female/i.test(x.name))||v.find(x=>/^en/i.test(x.lang))||null}catch(e){}}
 if('speechSynthesis' in window){pickVoice();speechSynthesis.onvoiceschanged=pickVoice}
 function say(t,force){if(!('speechSynthesis' in window))return;const n=Date.now();if(!force&&t===lastSay&&n-lastT<1000)return;lastSay=t;lastT=n;
  try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.rate=.85;u.pitch=1.05;u.volume=.7;u.lang='en-US';if(voice)u.voice=voice;speechSynthesis.speak(u)}catch(e){}}
+const BUF={};
+function clip(n){return n.replace(/ /g,'-')}
+function loadAudio(){if(!actx)return;const names=[];Object.keys(COLORS).forEach(c=>SHAPES.forEach(sh=>['','big-','little-'].forEach(p=>names.push(p+c+'-'+sh))));for(let i=0;i<6;i++)names.push('p'+i);
+ names.forEach(n=>fetch('audio/'+n+'.mp3').then(r=>{if(!r.ok)throw 0;return r.arrayBuffer()}).then(b=>new Promise((ok,no)=>actx.decodeAudioData(b,ok,no))).then(d=>BUF[n]=d).catch(()=>{}))}
+let cur=null;
+function speak(file,text,force){const n=Date.now();if(!force&&file===lastSay&&n-lastT<1000)return;
+ if(actx&&BUF[file]){lastSay=file;lastT=n;try{if(cur)cur.stop()}catch(e){}try{speechSynthesis.cancel()}catch(e){}
+  const src=actx.createBufferSource(),g=actx.createGain();g.gain.value=.8;src.buffer=BUF[file];src.connect(g).connect(actx.destination);src.start();cur=src}
+ else{say(text,force);lastSay=file}}
 let level=+localStorage.getItem('cof_level')||1,actx,pieces=[],left=0;
 const G=document.getElementById('game');
 function tone(f,d=.5,v=.06,type='sine',f2){if(!actx)return;const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();o.type=type;o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+d);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.04);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+d+.05)}
@@ -74,30 +90,30 @@ function hud(){document.getElementById('lvl').textContent='Level '+level;documen
 function build(){
  G.querySelectorAll('.item,.glow').forEach(e=>e.remove());hud();
  const W=innerWidth,H=innerHeight,spec=levelSpec(level),k=spec.items.length;
- const size=Math.min(H*.32,W/(k+1)*.85,170);left=k;pieces=[];
+ const BIG=Math.max(110,Math.min(H*.34,W/(k+.6)*.9,180)),SM=Math.max(70,BIG*.6);left=k;pieces=[];
  const slot=i=>(W/(k))*(i+.5);
  let order=[...Array(k).keys()];if(spec.shuffle)for(let i=k-1;i>0;i--){const j=Math.random()*(i+1)|0;[order[i],order[j]]=[order[j],order[i]]}
  if(spec.shuffle&&k>1&&order.every((v,i)=>v===i))order.reverse();
- spec.items.forEach((it,i)=>{
+ spec.items.forEach((it,i)=>{const size=it.z==='s'?SM:BIG;
   const t=document.createElement('div');t.className='item target';t.innerHTML=svg(it.s,COLORS[it.c],1);
   Object.assign(t.style,{width:size+'px',height:size+'px',left:slot(i)-size/2+'px',top:H*.27-size/2+'px'});G.appendChild(t);
   const p=document.createElement('div');p.className='item piece';p.innerHTML=svg(it.s,COLORS[it.c]);
   const hx=slot(order.indexOf(i))-size/2,hy=H*.74-size/2;
   Object.assign(p.style,{width:size+'px',height:size+'px',left:hx+'px',top:hy+'px',opacity:0});G.appendChild(p);
   requestAnimationFrame(()=>p.style.opacity=1);
-  const o={p,t,hx,hy,size,key:it.s+it.c,name:it.c+' '+it.s,done:0};pieces.push(o);drag(o);
+  const o={p,t,hx,hy,size,key:it.s+it.c+it.z,name:(spec.sized?(it.z==='s'?'little ':'big '):'')+it.c+' '+it.s,done:0};pieces.push(o);drag(o);
  });
 }
 function drag(o){
  let dx,dy,id=null;const p=o.p;
  p.addEventListener('pointerdown',e=>{if(o.done||id!==null)return;e.preventDefault();id=e.pointerId;p.setPointerCapture(id);
-  const r=p.getBoundingClientRect();dx=e.clientX-r.left;dy=e.clientY-r.top;p.classList.add('drag');p.style.zIndex=5;sPick();say(o.name)});
+  const r=p.getBoundingClientRect();dx=e.clientX-r.left;dy=e.clientY-r.top;p.classList.add('drag');p.style.zIndex=5;sPick();speak(clip(o.name),o.name)});
  p.addEventListener('pointermove',e=>{if(e.pointerId!==id)return;e.preventDefault();p.style.left=e.clientX-dx+'px';p.style.top=e.clientY-dy+'px'});
  const up=e=>{if(e.pointerId!==id)return;id=null;p.classList.remove('drag');p.style.zIndex='';
   const px=parseFloat(p.style.left)+o.size/2,py=parseFloat(p.style.top)+o.size/2;let hit=null,best=1e9;
-  pieces.forEach(q=>{if(q.done)return;const r=q.t.getBoundingClientRect(),d=Math.hypot(px-r.left-r.width/2,py-r.top-r.height/2);if(d<o.size*.85&&d<best){best=d;hit=q}});
+  pieces.forEach(q=>{if(q.done)return;const r=q.t.getBoundingClientRect(),d=Math.hypot(px-r.left-r.width/2,py-r.top-r.height/2);if(d<Math.max(o.size,r.width)*.85&&d<best){best=d;hit=q}});
   p.style.transition='left .6s ease,top .6s ease';
-  if(hit&&hit.key===o.key){const r=hit.t.getBoundingClientRect();p.style.left=r.left+'px';p.style.top=r.top+'px';hit.matchedBy=o;o.done=hit.done=0;o.done=1;hit.t.style.opacity=0;sMatch();glow(r);
+  if(hit&&hit.key===o.key){const r=hit.t.getBoundingClientRect();p.style.left=r.left+(r.width-o.size)/2+'px';p.style.top=r.top+(r.height-o.size)/2+'px';hit.matchedBy=o;o.done=hit.done=0;o.done=1;hit.t.style.opacity=0;sMatch();glow(r);
    pieces.forEach(q=>{if(q===o)q.done=1});if(--left===0)setTimeout(win,900)}
   else{if(hit)sWrong();p.style.left=o.hx+'px';p.style.top=o.hy+'px'}
   setTimeout(()=>p.style.transition='',650)};
@@ -106,10 +122,10 @@ function drag(o){
 function glow(r){const g=document.createElement('div');g.className='glow';const s=r.width*1.6;Object.assign(g.style,{width:s+'px',height:s+'px',left:r.left+r.width/2-s/2+'px',top:r.top+r.height/2-s/2+'px'});G.appendChild(g);
  requestAnimationFrame(()=>{g.style.opacity=1;setTimeout(()=>g.style.opacity=0,700);setTimeout(()=>g.remove(),1700)})}
 const PHR=['Great job Finn!',"You're so smart!",'Way to go Finn!','You did it!','Awesome matching, Finn!','Wonderful work!'];let lastP=-1;
-function win(){sDone();let pi;do{pi=Math.random()*PHR.length|0}while(pi===lastP);lastP=pi;setTimeout(()=>say(PHR[pi],1),900);const m=document.getElementById('msg');m.style.opacity=1;
+function win(){sDone();let pi;do{pi=Math.random()*PHR.length|0}while(pi===lastP);lastP=pi;setTimeout(()=>speak('p'+pi,PHR[pi],1),900);const m=document.getElementById('msg');m.style.opacity=1;
  setTimeout(()=>{m.style.opacity=0;G.querySelectorAll('.piece').forEach(e=>e.style.opacity=0)},1800);
  setTimeout(()=>{level++;localStorage.setItem('cof_level',level);build()},2700)}
-document.getElementById('go').onclick=()=>{try{if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u);pickVoice()}}catch(e){}try{actx=new (window.AudioContext||window.webkitAudioContext)();actx.resume()}catch(e){}
+document.getElementById('go').onclick=()=>{try{if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u);pickVoice()}}catch(e){}try{actx=new (window.AudioContext||window.webkitAudioContext)();actx.resume();loadAudio()}catch(e){}
  const s=document.getElementById('start');s.style.opacity=0;setTimeout(()=>s.remove(),800);
  try{document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen().then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape').catch(()=>{})).catch(()=>{})}catch(e){}
  build()};
