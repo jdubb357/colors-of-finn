@@ -105,7 +105,8 @@ function drag(o){
 }
 function glow(r){const g=document.createElement('div');g.className='glow';const s=r.width*1.6;Object.assign(g.style,{width:s+'px',height:s+'px',left:r.left+r.width/2-s/2+'px',top:r.top+r.height/2-s/2+'px'});G.appendChild(g);
  requestAnimationFrame(()=>{g.style.opacity=1;setTimeout(()=>g.style.opacity=0,700);setTimeout(()=>g.remove(),1700)})}
-function win(){sDone();const m=document.getElementById('msg');m.style.opacity=1;
+const PHR=['Great job Finn!',"You're so smart!",'Way to go Finn!','You did it!','Awesome matching, Finn!','Wonderful work!'];let lastP=-1;
+function win(){sDone();let pi;do{pi=Math.random()*PHR.length|0}while(pi===lastP);lastP=pi;setTimeout(()=>say(PHR[pi],1),900);const m=document.getElementById('msg');m.style.opacity=1;
  setTimeout(()=>{m.style.opacity=0;G.querySelectorAll('.piece').forEach(e=>e.style.opacity=0)},1800);
  setTimeout(()=>{level++;localStorage.setItem('cof_level',level);build()},2700)}
 document.getElementById('go').onclick=()=>{try{if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u);pickVoice()}}catch(e){}try{actx=new (window.AudioContext||window.webkitAudioContext)();actx.resume()}catch(e){}
