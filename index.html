@@ -26,9 +26,18 @@ touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callou
 #rotate{display:none;font-size:26px}
 @media (orientation:portrait){#rotate{display:flex}}
 #msg{position:absolute;left:0;right:0;top:40%;text-align:center;font-size:clamp(30px,6vw,56px);opacity:0;transition:opacity .9s ease;pointer-events:none;color:#8a9f92}
+#slots{display:flex;gap:3vw}
+.card{width:26vw;min-height:44vh;background:#fffaf0;border-radius:28px;box-shadow:0 4px 10px rgba(0,0,0,.06);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vh;font-size:clamp(22px,3.5vw,34px);cursor:pointer;padding:2vh 1vw;box-sizing:border-box}
+.card .sub{font-size:clamp(14px,2.2vw,20px);opacity:.75}.card .row{display:flex;gap:12px}
+.card button{font:inherit;font-size:clamp(14px,2vw,18px);border:0;border-radius:18px;padding:12px 18px;min-height:48px;background:#e8e1d3;color:#6b6358}
+.card .yes{background:#e5b7b0;color:#fff}.card .no{background:#9db8a8;color:#fff}
+#home{position:fixed;top:8px;left:8px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.5);color:#b5ab9c;font-size:22px;display:flex;align-items:center;justify-content:center;z-index:6;transition:background 1.2s linear}
+#home.hold{background:#cfe0d4}
 </style></head><body>
 <div id="game"><div id="hud"><span id="lvl">Level 1</span> &nbsp;<span id="stars"></span><div id="stage" style="font-size:16px;opacity:.7"></div></div><div id="msg">Great job, Finn!</div></div>
 <div id="start" class="ov"><button id="go">Colors of Finn</button><p>Tap to play</p></div>
+<div id="menu" class="ov" style="display:none;opacity:0;z-index:9"><div style="font-size:clamp(26px,5vw,42px);margin-bottom:3vh;color:#8a9f92">Colors of Finn</div><div id="slots"></div></div>
+<div id="home" title="Hold for menu">⌂</div>
 <div id="rotate" class="ov"><div style="font-size:60px">↻</div>Please turn your phone sideways</div>
 <script>
 const COLORS={red:'#e59a92',blue:'#8fb3d9',yellow:'#ecd68a',green:'#9cc9a0',orange:'#f0b88a',purple:'#b9a3d4'};
@@ -71,8 +80,11 @@ function speak(file,text,force){const n=Date.now();if(!force&&file===lastSay&&n-
  if(actx&&BUF[file]){lastSay=file;lastT=n;try{if(cur)cur.stop()}catch(e){}try{speechSynthesis.cancel()}catch(e){}
   const src=actx.createBufferSource(),g=actx.createGain();g.gain.value=.8;src.buffer=BUF[file];src.connect(g).connect(actx.destination);src.start();cur=src}
  else{say(text,force);lastSay=file}}
-let level=+localStorage.getItem('cof_v2_level')||0;
-if(!level){const o=+localStorage.getItem('cof_level')||1;level=o>=18?24:o>=9?16:o>=4?8:1;localStorage.setItem('cof_v2_level',level)}
+let level=1,slot=0,confirmSlot=-1;
+let SLOTS=null;try{SLOTS=JSON.parse(localStorage.getItem('cof_slots'))}catch(e){}
+if(!Array.isArray(SLOTS)){SLOTS=[null,null,null];const v=+localStorage.getItem('cof_v2_level'),o=+localStorage.getItem('cof_level');
+ if(v)SLOTS[0]=v;else if(o)SLOTS[0]=o>=18?24:o>=9?16:o>=4?8:1;localStorage.setItem('cof_slots',JSON.stringify(SLOTS))}
+function saveSlots(){localStorage.setItem('cof_slots',JSON.stringify(SLOTS))}
 let actx,pieces=[],left=0;
 const G=document.getElementById('game');
 function tone(f,d=.5,v=.06,type='sine',f2){if(!actx)return;const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();o.type=type;o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+d);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.04);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+d+.05)}
@@ -116,13 +128,28 @@ function glow(r){const g=document.createElement('div');g.className='glow';const 
 const PHR=['Great job Finn!',"You're so smart!",'Way to go Finn!','You did it!','Awesome matching, Finn!','Wonderful work!'];let lastP=-1;
 function win(){sDone();let pi;do{pi=Math.random()*PHR.length|0}while(pi===lastP);lastP=pi;setTimeout(()=>speak('p'+pi,PHR[pi],1),900);const m=document.getElementById('msg');m.style.opacity=1;
  setTimeout(()=>{m.style.opacity=0;G.querySelectorAll('.piece').forEach(e=>e.style.opacity=0)},1800);
- setTimeout(()=>{level++;localStorage.setItem('cof_v2_level',level);build()},2700)}
+ window._wt=setTimeout(()=>{level++;SLOTS[slot]=level;saveSlots();build()},2700)}
 document.getElementById('go').onclick=()=>{try{if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u);pickVoice()}}catch(e){}try{actx=new (window.AudioContext||window.webkitAudioContext)();actx.resume();loadAudio()}catch(e){}
- const s=document.getElementById('start');s.style.opacity=0;setTimeout(()=>s.remove(),800);
+ const s=document.getElementById('start');s.style.opacity=0;setTimeout(()=>s.remove(),800);showMenu();
  try{document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen().then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape').catch(()=>{})).catch(()=>{})}catch(e){}
- build()};
+ };
 document.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
 document.addEventListener('gesturestart',e=>e.preventDefault());
-let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(!document.getElementById('start'))build()},300)});
+let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(!document.getElementById('start')&&MENU.style.display!=='flex')build()},300)});
+const MENU=document.getElementById('menu');
+function showMenu(){clearTimeout(window._pt);clearTimeout(window._wt);try{speechSynthesis.cancel();cur&&cur.stop()}catch(e){}confirmSlot=-1;renderMenu();MENU.style.display='flex';requestAnimationFrame(()=>MENU.style.opacity=1)}
+function renderMenu(){const w=document.getElementById('slots');w.innerHTML='';
+ SLOTS.forEach((lv,i)=>{const c=document.createElement('div');c.className='card';
+  if(confirmSlot===i){c.innerHTML='<b>Start over?</b><div class="sub">Slot '+(i+1)+' will go back to Level 1</div><div class="row"><button class="yes">Yes</button><button class="no">No</button></div>';
+   c.querySelector('.yes').onclick=e=>{e.stopPropagation();SLOTS[i]=1;saveSlots();play(i)};c.querySelector('.no').onclick=e=>{e.stopPropagation();confirmSlot=-1;renderMenu()}}
+  else{c.innerHTML='<b>Slot '+(i+1)+'</b><div class="sub">'+(lv?'Level '+lv+'<br>'+STAGES[levelSpec(lv).st]:'Empty')+'</div><div class="row">'+(lv?'<button class="new">New Game</button>':'<span class="sub">Tap to start</span>')+'</div>';
+   c.onclick=()=>{if(!lv){SLOTS[i]=1;saveSlots()}play(i)};const n=c.querySelector('.new');if(n)n.onclick=e=>{e.stopPropagation();confirmSlot=i;renderMenu()}}
+  w.appendChild(c)})}
+function play(i){slot=i;level=SLOTS[i]||1;MENU.style.opacity=0;setTimeout(()=>MENU.style.display='none',600);first=1;build()}
+// home button: press and hold
+(function(){const h=document.getElementById('home');let t=null;
+ const down=e=>{e.preventDefault();e.stopPropagation();h.classList.add('hold');t=setTimeout(()=>{h.classList.remove('hold');G.querySelectorAll('.item,.glow').forEach(x=>x.remove());showMenu()},1200)};
+ const up=()=>{clearTimeout(t);h.classList.remove('hold')};
+ h.addEventListener('pointerdown',down);['pointerup','pointercancel','pointerleave'].forEach(ev=>h.addEventListener(ev,up))})();
 hud();
 </script></body></html>
